@@ -68,10 +68,12 @@ async def _run_migration(bot: Client, user_id: int, rule_id: int,
 
         await bot.send_message(
             notify_chat_id,
-            "🚀 **Migration Started!**\n\n"
-            f"Copying messages from source to destination...\n"
-            "I'll update you on progress. This may take a while.\n\n"
-            "Send `/stop_migration` to cancel."
+            "**Migration Started**\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Copying messages from source\n"
+            "to destination.\n\n"
+            "Send `/stop_migration` to cancel.\n"
+            "━━━━━━━━━━━━━━━━━━━━"
         )
 
         copied = 0
@@ -90,8 +92,8 @@ async def _run_migration(bot: Client, user_id: int, rule_id: int,
 
         await bot.send_message(
             notify_chat_id,
-            f"📊 Found **{total}** messages to copy.\n"
-            f"Estimated time: ~{total * 0.6 / 60:.1f} minutes"
+            f"**{total}** messages found.\n"
+            f"Estimated time: ~{total * 0.6 / 60:.1f} min"
         )
 
         # Process oldest first
@@ -122,10 +124,12 @@ async def _run_migration(bot: Client, user_id: int, rule_id: int,
                 # Notify user periodically
                 if copied % update_interval == 0:
                     pct = (copied / total * 100) if total > 0 else 0
+                    bar = '▓' * int(pct / 5) + '░' * (20 - int(pct / 5))
                     await bot.send_message(
                         notify_chat_id,
-                        f"📦 Progress: **{copied}/{total}** ({pct:.0f}%)\n"
-                        f"{'█' * int(pct / 5)}{'░' * (20 - int(pct / 5))}"
+                        f"**Migration**  ·  {pct:.0f}%\n"
+                        f"{bar}\n"
+                        f"{copied} / {total}"
                     )
 
             except errors.FloodWait as e:
@@ -137,8 +141,10 @@ async def _run_migration(bot: Client, user_id: int, rule_id: int,
                 await finish_migration(migration_id, 'cancelled')
                 await bot.send_message(
                     notify_chat_id,
-                    f"⏹ **Migration Cancelled.**\n"
-                    f"Copied: {copied}/{total} messages."
+                    "**Migration Cancelled**\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"Copied: {copied} / {total}\n"
+                    "━━━━━━━━━━━━━━━━━━━━"
                 )
                 return
             except Exception as e:
@@ -157,10 +163,13 @@ async def _run_migration(bot: Client, user_id: int, rule_id: int,
         await finish_migration(migration_id, 'completed')
         await bot.send_message(
             notify_chat_id,
-            f"🎉 **Migration Complete!**\n\n"
-            f"✅ Copied: **{copied}** messages\n"
-            f"❌ Errors: **{errors_count}**\n"
-            f"Total messages in source: **{total}**"
+            "**Migration Complete**\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"┊  Copied:  **{copied}**\n"
+            f"┊  Errors:  **{errors_count}**\n"
+            f"┊  Total:  **{total}**\n\n"
+            "▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  100%\n"
+            "━━━━━━━━━━━━━━━━━━━━"
         )
 
     except asyncio.CancelledError:
@@ -170,7 +179,9 @@ async def _run_migration(bot: Client, user_id: int, rule_id: int,
         try:
             await bot.send_message(
                 notify_chat_id,
-                f"❌ **Migration Failed!**\n\nError: {e}"
+                "**Migration Failed**\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"{e}"
             )
         except Exception:
             pass

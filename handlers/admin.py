@@ -1,9 +1,9 @@
-"""Handlers: Admin dashboard — only for bot owner."""
+"""Handlers: Admin dashboard — v2.0 Premium UI."""
 from pyrogram import Client, filters
 from pyrogram.types import Message
 
 from config import ADMIN_ID
-from core.database import get_global_stats, get_all_active_users
+from core.database import get_global_stats
 
 
 def register(bot: Client, session_mgr):
@@ -11,18 +11,19 @@ def register(bot: Client, session_mgr):
     @bot.on_message(filters.command("admin") & filters.private)
     async def cmd_admin(client: Client, message: Message):
         if message.from_user.id != ADMIN_ID:
-            await message.reply("🚫 Admin access only.")
             return
 
         stats = await get_global_stats()
         session_count = len(session_mgr.active_clients)
 
         await message.reply(
-            "👑 **Admin Dashboard**\n\n"
-            f"👥 Total users: **{stats['total_users']}**\n"
-            f"🟢 Active (logged in): **{stats['active_users']}**\n"
-            f"📋 Active rules: **{stats['active_rules']}**\n"
-            f"📨 Total messages forwarded: **{stats['total_messages']}**\n"
-            f"🔌 Live sessions: **{session_count}**\n\n"
-            f"_Bot is running on v1.0_"
+            "**Admin Dashboard**\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"┊  Users:  **{stats['total_users']}**  total\n"
+            f"┊  Active:  **{stats['active_users']}**  connected\n"
+            f"┊  Rules:  **{stats['active_rules']}**  active\n"
+            f"┊  Messages:  **{stats['total_messages']}**  forwarded\n"
+            f"┊  Sessions:  **{session_count}**  live\n\n"
+            f"**Version:**  v2.0\n"
+            f"━━━━━━━━━━━━━━━━━━━━"
         )

@@ -1,4 +1,4 @@
-"""Handlers: Add / List / Manage / Delete / Migrate forwarding rules — v1.0."""
+"""Handlers: Add / List / Manage / Delete / Migrate forwarding rules — v2.0 Premium UI."""
 from pyrogram import Client, filters, errors
 from pyrogram.types import CallbackQuery
 
@@ -23,21 +23,26 @@ async def safe_edit(message, text, reply_markup=None):
 
 def register(bot: Client, session_mgr):
 
-    # ══════════════ ADD RULE FLOW ══════════════
+    # ═══════════ ADD RULE FLOW ═══════════
 
     @bot.on_callback_query(filters.regex("^add_rule$"))
     async def cb_add_rule(client: Client, cb: CallbackQuery):
         uid = cb.from_user.id
         user = await get_user(uid)
         if not user or user['status'] != 'active':
-            await cb.answer("Please login first!", show_alert=True)
+            await cb.answer("Connect your account first.", show_alert=True)
             return
 
         if uid not in session_mgr.active_clients:
             await session_mgr.start_forwarding(uid, user['session_string'])
 
         await cb.answer()
-        await safe_edit(cb.message, "⏳ **Fetching your groups...**\n\nPlease wait.")
+        await safe_edit(
+            cb.message,
+            "**Loading Groups**\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Fetching your groups and channels..."
+        )
 
         groups = await session_mgr.get_user_groups(uid)
         session_mgr.set_state(uid, 'rule_picking_source', groups=groups)
@@ -46,16 +51,20 @@ def register(bot: Client, session_mgr):
             session_mgr.set_state(uid, 'rule_waiting_source_id')
             await safe_edit(
                 cb.message,
-                "No groups found. Enter the **Source** chat ID manually:\n"
-                "(e.g., `-1001234567890`)",
+                "**Add Rule  ·  Step 1**\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                "No groups found.\n"
+                "Enter the **Source** chat ID manually:\n\n"
+                "`-1001234567890`",
                 reply_markup=cancel_kb()
             )
             return
 
         await safe_edit(
             cb.message,
-            "📤 **Step 1: Pick Source**\n\n"
-            "Select the group/channel to **copy messages FROM**:",
+            "**Add Rule  ·  Step 1**\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Select the group to **copy messages from:**",
             reply_markup=groups_keyboard(groups, page=0, prefix="src")
         )
 
@@ -75,9 +84,10 @@ def register(bot: Client, session_mgr):
         await cb.answer()
         await safe_edit(
             cb.message,
-            f"✅ Source: **{title}** (`{source_id}`)\n\n"
-            "📥 **Step 2: Pick Destination**\n\n"
-            "Select the group/channel to **paste messages TO**:",
+            "**Add Rule  ·  Step 2**\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"**Source:**  {title}\n\n"
+            "Now select the **destination:**",
             reply_markup=groups_keyboard(groups, page=0, prefix="dst")
         )
 
@@ -91,10 +101,15 @@ def register(bot: Client, session_mgr):
         groups = state.get('groups', [])
 
         if not source_id:
-            await cb.answer("Session expired. Please start over.", show_alert=True)
+            await cb.answer("Session expired. Start over.", show_alert=True)
             session_mgr.clear_state(uid)
-            await safe_edit(cb.message, "❌ Setup expired. Try again:",
-                            reply_markup=main_menu_kb(is_logged_in=True))
+            await safe_edit(
+                cb.message,
+                "**Session Expired**\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                "Please try again.",
+                reply_markup=main_menu_kb(is_logged_in=True)
+            )
             return
 
         dest_title = next((g['title'] for g in groups if g['id'] == dest_id), str(dest_id))
@@ -103,24 +118,32 @@ def register(bot: Client, session_mgr):
         session_mgr.clear_state(uid)
 
         if not success:
-            await cb.answer("This rule already exists!", show_alert=True)
-            await safe_edit(cb.message,
-                            "⚠️ **Duplicate Rule!** This source→dest pair already exists.",
-                            reply_markup=main_menu_kb(is_logged_in=True))
+            await cb.answer("This rule already exists.", show_alert=True)
+            await safe_edit(
+                cb.message,
+                "**Duplicate Rule**\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                "This source → destination pair\n"
+                "already exists in your rules.",
+                reply_markup=main_menu_kb(is_logged_in=True)
+            )
             return
 
         # Restart forwarding to pick up new rule
         user = await get_user(uid)
         await session_mgr.start_forwarding(uid, user['session_string'])
 
-        await cb.answer("Rule created! ✅")
+        await cb.answer("Rule created!")
         await safe_edit(
             cb.message,
-            "🎉 **Forwarding Rule Created!**\n\n"
-            f"📤 Source: **{source_title}**\n"
-            f"📥 Destination: **{dest_title}**\n\n"
-            "✅ New messages will be copied silently!\n"
-            "💡 Want old messages too? Go to My Rules → Migrate.",
+            "**Rule Created**\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"┊  **From:**  {source_title}\n"
+            f"┊  **To:**      {dest_title}\n\n"
+            "New messages will be copied silently.\n"
+            "Want old messages too?\n"
+            "Go to My Rules → Migrate.\n"
+            "━━━━━━━━━━━━━━━━━━━━",
             reply_markup=main_menu_kb(is_logged_in=True)
         )
 
@@ -132,9 +155,14 @@ def register(bot: Client, session_mgr):
         session_mgr.set_state(cb.from_user.id, 'rule_waiting_source_id',
                               groups=state.get('groups', []))
         await cb.answer()
-        await safe_edit(cb.message,
-                        "📝 Enter the **Source** chat ID manually:\n(e.g., `-1001234567890`)",
-                        reply_markup=cancel_kb())
+        await safe_edit(
+            cb.message,
+            "**Add Rule  ·  Manual Entry**\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Enter the **Source** chat ID:\n\n"
+            "`-1001234567890`",
+            reply_markup=cancel_kb()
+        )
 
     @bot.on_callback_query(filters.regex("^dst_manual$"))
     async def dst_manual(client: Client, cb: CallbackQuery):
@@ -144,9 +172,14 @@ def register(bot: Client, session_mgr):
                               source_id=state.get('source_id'),
                               source_title=state.get('source_title', ''))
         await cb.answer()
-        await safe_edit(cb.message,
-                        "📝 Enter the **Destination** chat ID manually:\n(e.g., `-1001234567890`)",
-                        reply_markup=cancel_kb())
+        await safe_edit(
+            cb.message,
+            "**Add Rule  ·  Manual Entry**\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Enter the **Destination** chat ID:\n\n"
+            "`-1001234567890`",
+            reply_markup=cancel_kb()
+        )
 
     # ── Pagination ──
 
@@ -159,14 +192,19 @@ def register(bot: Client, session_mgr):
         state = session_mgr.get_state(uid)
         groups = state.get('groups', [])
 
-        step = "Step 1: Pick Source" if prefix == "src" else "Step 2: Pick Destination"
-        action = "copy messages FROM" if prefix == "src" else "paste messages TO"
+        step = "Step 1" if prefix == "src" else "Step 2"
+        action = "copy messages from" if prefix == "src" else "forward messages to"
 
         await cb.answer()
-        await safe_edit(cb.message, f"**{step}**\n\nSelect the group/channel to **{action}**:",
-                        reply_markup=groups_keyboard(groups, page=page, prefix=prefix))
+        await safe_edit(
+            cb.message,
+            f"**Add Rule  ·  {step}**\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"Select the group to **{action}:**",
+            reply_markup=groups_keyboard(groups, page=page, prefix=prefix)
+        )
 
-    # ══════════════ RULE MANAGEMENT ══════════════
+    # ═══════════ RULE MANAGEMENT ═══════════
 
     @bot.on_callback_query(filters.regex("^my_rules$"))
     async def cb_my_rules(client: Client, cb: CallbackQuery):
@@ -174,16 +212,24 @@ def register(bot: Client, session_mgr):
         rules = await get_user_rules(uid)
         if not rules:
             await cb.answer()
-            await safe_edit(cb.message,
-                            "📋 **No rules yet.**\n\nCreate your first forwarding rule!",
-                            reply_markup=main_menu_kb(is_logged_in=True))
+            await safe_edit(
+                cb.message,
+                "**My Rules**\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                "No rules yet.\n"
+                "Create your first forwarding rule.",
+                reply_markup=main_menu_kb(is_logged_in=True)
+            )
             return
 
+        active = sum(1 for r in rules if r['is_active'])
         await cb.answer()
         await safe_edit(
             cb.message,
-            f"📋 **Your Forwarding Rules** ({len(rules)} total)\n\n"
-            "Tap a rule to manage it (pause, delete, migrate):",
+            f"**My Rules**\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"Total: **{len(rules)}**  ·  Active: **{active}**\n\n"
+            f"Tap a rule to manage it:",
             reply_markup=rules_list_kb(rules)
         )
 
@@ -197,18 +243,22 @@ def register(bot: Client, session_mgr):
             await cb.answer("Rule not found.", show_alert=True)
             return
 
-        status = "🟢 Active" if rule['is_active'] else "🔴 Paused"
+        status = "◉ Active" if rule['is_active'] else "○ Paused"
         src = rule['source_title'] or str(rule['source_chat_id'])
         dst = rule['dest_title'] or str(rule['dest_chat_id'])
 
         await cb.answer()
         await safe_edit(
             cb.message,
-            f"📋 **Rule #{rule['id']}** — {status}\n\n"
-            f"📤 **Source:** {src}\n`{rule['source_chat_id']}`\n\n"
-            f"📥 **Dest:** {dst}\n`{rule['dest_chat_id']}`\n\n"
-            f"📊 Messages copied: **{rule['messages_copied']}**\n"
-            f"📅 Created: {rule['created_at'][:10]}",
+            f"**Rule #{rule['id']}**  ·  {status}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"┊  **Source:**  {src}\n"
+            f"┊  `{rule['source_chat_id']}`\n\n"
+            f"┊  **Dest:**  {dst}\n"
+            f"┊  `{rule['dest_chat_id']}`\n\n"
+            f"**Messages copied:**  {rule['messages_copied']}\n"
+            f"**Created:**  {rule['created_at'][:10]}\n"
+            f"━━━━━━━━━━━━━━━━━━━━",
             reply_markup=rule_detail_kb(rule_id, bool(rule['is_active']))
         )
 
@@ -220,26 +270,28 @@ def register(bot: Client, session_mgr):
         rule_id = int(cb.data.split("_")[1])
         await toggle_rule(rule_id, uid)
 
-        # Restart forwarding
         user = await get_user(uid)
         if user and user['status'] == 'active':
             await session_mgr.start_forwarding(uid, user['session_string'])
 
         rule = await get_rule_by_id(rule_id, uid)
-        status = "▶️ Resumed" if rule['is_active'] else "⏸ Paused"
-        await cb.answer(f"Rule {status}!")
+        action = "Resumed" if rule['is_active'] else "Paused"
+        await cb.answer(f"Rule {action}.")
 
-        # Refresh the rule view
+        status = "◉ Active" if rule['is_active'] else "○ Paused"
         src = rule['source_title'] or str(rule['source_chat_id'])
         dst = rule['dest_title'] or str(rule['dest_chat_id'])
-        full_status = "🟢 Active" if rule['is_active'] else "🔴 Paused"
         await safe_edit(
             cb.message,
-            f"📋 **Rule #{rule['id']}** — {full_status}\n\n"
-            f"📤 **Source:** {src}\n`{rule['source_chat_id']}`\n\n"
-            f"📥 **Dest:** {dst}\n`{rule['dest_chat_id']}`\n\n"
-            f"📊 Messages copied: **{rule['messages_copied']}**\n"
-            f"📅 Created: {rule['created_at'][:10]}",
+            f"**Rule #{rule['id']}**  ·  {status}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"┊  **Source:**  {src}\n"
+            f"┊  `{rule['source_chat_id']}`\n\n"
+            f"┊  **Dest:**  {dst}\n"
+            f"┊  `{rule['dest_chat_id']}`\n\n"
+            f"**Messages copied:**  {rule['messages_copied']}\n"
+            f"**Created:**  {rule['created_at'][:10]}\n"
+            f"━━━━━━━━━━━━━━━━━━━━",
             reply_markup=rule_detail_kb(rule_id, bool(rule['is_active']))
         )
 
@@ -251,8 +303,10 @@ def register(bot: Client, session_mgr):
         await cb.answer()
         await safe_edit(
             cb.message,
-            f"⚠️ **Are you sure you want to delete Rule #{rule_id}?**\n\n"
-            "This cannot be undone!",
+            f"**Delete Rule #{rule_id}**\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"This action cannot be undone.\n"
+            f"Are you sure?",
             reply_markup=confirm_delete_kb(rule_id)
         )
 
@@ -262,20 +316,31 @@ def register(bot: Client, session_mgr):
         rule_id = int(cb.data.split("_")[1])
         await delete_rule(rule_id, uid)
 
-        # Restart forwarding
         user = await get_user(uid)
         if user and user['status'] == 'active':
             await session_mgr.start_forwarding(uid, user['session_string'])
 
-        await cb.answer("Rule deleted! 🗑")
+        await cb.answer("Rule deleted.")
         rules = await get_user_rules(uid)
         if rules:
-            await safe_edit(cb.message,
-                            f"✅ Rule #{rule_id} deleted.\n\n**Your remaining rules:**",
-                            reply_markup=rules_list_kb(rules))
+            active = sum(1 for r in rules if r['is_active'])
+            await safe_edit(
+                cb.message,
+                f"**My Rules**\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"Rule #{rule_id} deleted.\n\n"
+                f"Total: **{len(rules)}**  ·  Active: **{active}**",
+                reply_markup=rules_list_kb(rules)
+            )
         else:
-            await safe_edit(cb.message, "✅ Rule deleted. No rules left.",
-                            reply_markup=main_menu_kb(is_logged_in=True))
+            await safe_edit(
+                cb.message,
+                "**My Rules**\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                "All rules deleted.\n"
+                "No active rules.",
+                reply_markup=main_menu_kb(is_logged_in=True)
+            )
 
     # ── Migration ──
 
@@ -286,15 +351,20 @@ def register(bot: Client, session_mgr):
 
         user_client = session_mgr.active_clients.get(uid)
         if not user_client:
-            await cb.answer("Session not active. Login again.", show_alert=True)
+            await cb.answer("Session not active. Connect again.", show_alert=True)
             return
 
         await cb.answer()
         await safe_edit(
             cb.message,
-            "📦 **Starting Message Migration...**\n\n"
-            "Copying ALL old messages from source to destination.\n"
-            "This may take several minutes. You'll get progress updates!"
+            "**Migration Starting**\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Copying all old messages\n"
+            "from source to destination.\n\n"
+            "This may take several minutes.\n"
+            "You'll receive progress updates.\n\n"
+            "Send `/stop_migration` to cancel.\n"
+            "━━━━━━━━━━━━━━━━━━━━"
         )
 
         success, msg = await migrator.start_migration(
@@ -303,7 +373,12 @@ def register(bot: Client, session_mgr):
         )
 
         if not success:
-            await cb.message.reply(f"❌ {msg}", reply_markup=main_menu_kb(is_logged_in=True))
+            await cb.message.reply(
+                f"**Migration Error**\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"{msg}",
+                reply_markup=main_menu_kb(is_logged_in=True)
+            )
 
     # ── Stop Migration ──
 
@@ -311,7 +386,7 @@ def register(bot: Client, session_mgr):
     async def cmd_stop_migration(client: Client, message):
         stopped = await migrator.stop_migration(message.from_user.id)
         if stopped:
-            await message.reply("⏹ Migration stop requested.")
+            await message.reply("Migration stop requested.")
         else:
             await message.reply("No migration is running.")
 
@@ -323,17 +398,18 @@ def register(bot: Client, session_mgr):
         user = await get_user(uid)
         rules = await get_user_rules(uid)
         active = sum(1 for r in rules if r['is_active'])
-
         total_copied = sum(r['messages_copied'] for r in rules) if rules else 0
 
         await cb.answer()
         await safe_edit(
             cb.message,
-            "📊 **Your Stats**\n\n"
-            f"📨 Messages forwarded: **{user['messages_forwarded'] if user else 0}**\n"
-            f"📋 Total rules: **{len(rules)}** ({active} active)\n"
-            f"📦 Messages copied (migration): **{total_copied}**\n\n"
-            f"Account status: {'🟢 Active' if user and user['status'] == 'active' else '🔴 Inactive'}",
+            "**Your Stats**\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"┊  Messages forwarded:  **{user['messages_forwarded'] if user else 0}**\n"
+            f"┊  Total rules:  **{len(rules)}**  ({active} active)\n"
+            f"┊  Migrated messages:  **{total_copied}**\n\n"
+            f"**Account:**  {'◉ Active' if user and user['status'] == 'active' else '○ Inactive'}\n"
+            f"━━━━━━━━━━━━━━━━━━━━",
             reply_markup=main_menu_kb(is_logged_in=True)
         )
 
@@ -347,7 +423,7 @@ def register(bot: Client, session_mgr):
             user = await get_user(message.from_user.id)
             if user and user['status'] == 'active':
                 await session_mgr.start_forwarding(message.from_user.id, user['session_string'])
-            await message.reply(f"✅ Rule #{rule_id} deleted.")
+            await message.reply(f"Rule #{rule_id} deleted.")
         except (IndexError, ValueError):
             await message.reply("Usage: `/del <rule_id>`")
 
@@ -362,8 +438,12 @@ async def process_text(client: Client, message, session_mgr):
     try:
         chat_id = int(text)
     except ValueError:
-        await message.reply("❌ Invalid ID. Enter a number like `-1001234567890`.",
-                            reply_markup=cancel_kb())
+        await message.reply(
+            "**Invalid ID**\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Enter a number like `-1001234567890`.",
+            reply_markup=cancel_kb()
+        )
         return
 
     if current == 'rule_waiting_source_id':
@@ -372,14 +452,20 @@ async def process_text(client: Client, message, session_mgr):
                               source_id=chat_id, source_title=str(chat_id))
         if groups:
             await message.reply(
-                f"✅ Source set: `{chat_id}`\n\n📥 **Step 2: Pick Destination**:",
+                "**Add Rule  ·  Step 2**\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"**Source:**  `{chat_id}`\n\n"
+                "Now select the **destination:**",
                 reply_markup=groups_keyboard(groups, page=0, prefix="dst")
             )
         else:
             session_mgr.set_state(uid, 'rule_waiting_dest_id',
                                   groups=[], source_id=chat_id, source_title=str(chat_id))
             await message.reply(
-                f"✅ Source set: `{chat_id}`\n\nNow enter **Destination** chat ID:",
+                "**Add Rule  ·  Step 2**\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"**Source:**  `{chat_id}`\n\n"
+                "Now enter **Destination** chat ID:",
                 reply_markup=cancel_kb()
             )
 
@@ -387,8 +473,12 @@ async def process_text(client: Client, message, session_mgr):
         source_id = state.get('source_id')
         source_title = state.get('source_title', '')
         if not source_id:
-            await message.reply("❌ Session expired. Start over.",
-                                reply_markup=main_menu_kb(is_logged_in=True))
+            await message.reply(
+                "**Session Expired**\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                "Please start over.",
+                reply_markup=main_menu_kb(is_logged_in=True)
+            )
             session_mgr.clear_state(uid)
             return
 
@@ -396,15 +486,22 @@ async def process_text(client: Client, message, session_mgr):
         session_mgr.clear_state(uid)
 
         if not success:
-            await message.reply("⚠️ This rule already exists!",
-                                reply_markup=main_menu_kb(is_logged_in=True))
+            await message.reply(
+                "**Duplicate Rule**\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                "This rule already exists.",
+                reply_markup=main_menu_kb(is_logged_in=True)
+            )
             return
 
         user = await get_user(uid)
         await session_mgr.start_forwarding(uid, user['session_string'])
         await message.reply(
-            "🎉 **Rule Created!**\n\n"
-            f"📤 Source: `{source_id}`\n📥 Dest: `{chat_id}`\n\n"
-            "Messages will now be forwarded silently!",
+            "**Rule Created**\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"┊  **From:**  `{source_id}`\n"
+            f"┊  **To:**      `{chat_id}`\n\n"
+            "Messages will now be forwarded silently.\n"
+            "━━━━━━━━━━━━━━━━━━━━",
             reply_markup=main_menu_kb(is_logged_in=True)
         )

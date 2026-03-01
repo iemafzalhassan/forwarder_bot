@@ -1,0 +1,10 @@
+services:
+  msg_forwarder_bot:
+    build: .
+    container_name: telegraph_forward_bot
+    restart: always # Ye rule ensure karega ki agar server restart ho ya bot crash ho, to ye auto-start ho jaye
+    env_file:
+      - .env
+    volumes:
+      # Database folder ko container ke bahar save rakhega taaki update pe data delete na ho
+      - ./data:/app/data

@@ -3,8 +3,8 @@ from pyrogram import Client, filters, errors
 from pyrogram.types import CallbackQuery
 
 from keyboards.buttons import (
-    main_menu_kb, groups_keyboard, cancel_kb,
-    rules_list_kb, rule_detail_kb, confirm_delete_kb
+    main_menu_kb, back_to_main_kb, groups_keyboard, cancel_kb,
+    rules_list_kb, rule_detail_kb, confirm_delete_kb, migrate_menu_kb
 )
 from core.database import (
     get_user, add_rule, get_user_rules, get_active_rules,
@@ -342,7 +342,38 @@ def register(bot: Client, session_mgr):
                 reply_markup=main_menu_kb(is_logged_in=True)
             )
 
-    # ── Migration ──
+    # ── Migration Menu (from Main Menu) ──
+
+    @bot.on_callback_query(filters.regex("^migrate_menu$"))
+    async def cb_migrate_menu(client: Client, cb: CallbackQuery):
+        uid = cb.from_user.id
+        rules = await get_user_rules(uid)
+        if not rules:
+            await cb.answer()
+            await safe_edit(
+                cb.message,
+                "**Migrate Messages**\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                "No rules yet.\n"
+                "Create a rule first, then migrate.\n"
+                "━━━━━━━━━━━━━━━━━━━━",
+                reply_markup=main_menu_kb(is_logged_in=True)
+            )
+            return
+
+        await cb.answer()
+        await safe_edit(
+            cb.message,
+            "**Migrate Messages**\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Copy all old messages from\n"
+            "source to destination.\n\n"
+            "Select a rule to migrate:\n"
+            "━━━━━━━━━━━━━━━━━━━━",
+            reply_markup=migrate_menu_kb(rules)
+        )
+
+    # ── Migration (per rule) ──
 
     @bot.on_callback_query(filters.regex(r"^migrate_\d+$"))
     async def cb_migrate(client: Client, cb: CallbackQuery):

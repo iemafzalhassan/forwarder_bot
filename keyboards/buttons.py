@@ -1,33 +1,30 @@
 """
-Premium Inline Keyboard Builders — v2.0
-Uses carefully chosen Unicode symbols for a high-end SaaS look.
+Premium Inline Keyboard Builders — v2.1 Flagship
+Every screen has consistent navigation. Migration accessible from main menu.
 """
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-
-# ═══════════════════════════════════════════
-# Premium Unicode Icon Set
-# ═══════════════════════════════════════════
-# Navigation:  ‹ ›  « »  ◂ ▸
-# Status:      ◉ Active   ○ Paused   ◎ Pending
-# Actions:     ＋ Add   ✕ Delete   ⟳ Reload
-# Bullets:     ▪ ▫ ► ◈ ◇ ◆ ⊡ ⊞
-# Sections:    ─── ═══ ┊ │ ┃
-# Premium:     ⟐ ⬡ ⏣ ☰ ⚙ ⎔
 
 
 def main_menu_kb(is_logged_in: bool = False) -> InlineKeyboardMarkup:
     buttons = []
     if is_logged_in:
-        buttons.append([InlineKeyboardButton("＋  Add Forwarding Rule", callback_data="add_rule")])
+        buttons.append([InlineKeyboardButton("＋  New Rule", callback_data="add_rule")])
         buttons.append([InlineKeyboardButton("☰  My Rules", callback_data="my_rules")])
+        buttons.append([InlineKeyboardButton("⟳  Migrate Old Messages", callback_data="migrate_menu")])
         buttons.append([
             InlineKeyboardButton("⊡  Stats", callback_data="my_stats"),
-            InlineKeyboardButton("⊗  Logout", callback_data="logout")
+            InlineKeyboardButton("⊗  Disconnect", callback_data="logout")
         ])
     else:
         buttons.append([InlineKeyboardButton("▸  Connect Telegram Account", callback_data="login")])
-    buttons.append([InlineKeyboardButton("◇  How to Use", callback_data="guide")])
+    buttons.append([InlineKeyboardButton("◇  Guide", callback_data="guide")])
     return InlineKeyboardMarkup(buttons)
+
+
+def back_to_main_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("‹  Back", callback_data="main_menu")]
+    ])
 
 
 def cancel_kb() -> InlineKeyboardMarkup:
@@ -63,14 +60,14 @@ def groups_keyboard(groups: list[dict], page: int = 0, per_page: int = 6,
 
 def rule_detail_kb(rule_id: int, is_active: bool) -> InlineKeyboardMarkup:
     toggle_text = "❚❚  Pause" if is_active else "▸  Resume"
-    toggle_data = f"toggle_{rule_id}"
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton(toggle_text, callback_data=toggle_data),
+            InlineKeyboardButton(toggle_text, callback_data=f"toggle_{rule_id}"),
             InlineKeyboardButton("✕  Delete", callback_data=f"delrule_{rule_id}")
         ],
         [InlineKeyboardButton("⟳  Migrate Old Messages", callback_data=f"migrate_{rule_id}")],
-        [InlineKeyboardButton("‹  Back to Rules", callback_data="my_rules")]
+        [InlineKeyboardButton("‹  Back to Rules", callback_data="my_rules")],
+        [InlineKeyboardButton("‹‹  Main Menu", callback_data="main_menu")]
     ])
 
 
@@ -78,7 +75,7 @@ def confirm_delete_kb(rule_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("◉  Yes, Delete", callback_data=f"confirmdel_{rule_id}"),
-            InlineKeyboardButton("○  No, Keep", callback_data="my_rules")
+            InlineKeyboardButton("○  No, Keep", callback_data=f"viewrule_{rule_id}")
         ]
     ])
 
@@ -92,6 +89,19 @@ def rules_list_kb(rules: list) -> InlineKeyboardMarkup:
         label = f"{status}  {src}  →  {dst}"
         buttons.append([InlineKeyboardButton(label, callback_data=f"viewrule_{r['id']}")])
 
-    buttons.append([InlineKeyboardButton("＋  Add New Rule", callback_data="add_rule")])
+    buttons.append([InlineKeyboardButton("＋  New Rule", callback_data="add_rule")])
+    buttons.append([InlineKeyboardButton("‹  Main Menu", callback_data="main_menu")])
+    return InlineKeyboardMarkup(buttons)
+
+
+def migrate_menu_kb(rules: list) -> InlineKeyboardMarkup:
+    """Migration menu — shows all rules with migrate option."""
+    buttons = []
+    for r in rules:
+        src = r['source_title'][:16] if r['source_title'] else str(r['source_chat_id'])[:16]
+        dst = r['dest_title'][:16] if r['dest_title'] else str(r['dest_chat_id'])[:16]
+        label = f"⟳  {src}  →  {dst}"
+        buttons.append([InlineKeyboardButton(label, callback_data=f"migrate_{r['id']}")])
+
     buttons.append([InlineKeyboardButton("‹  Main Menu", callback_data="main_menu")])
     return InlineKeyboardMarkup(buttons)

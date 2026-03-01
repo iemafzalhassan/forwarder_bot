@@ -1,10 +1,12 @@
 """
 Session Manager — The Heart of the Bot.
 Manages user login flow (phone → OTP → 2FA) and background forwarding clients.
-v1.0: Added message counting, better error handling.
+v1.0: Media group (album) support + message counting.
 """
+import asyncio
 import logging
 from pyrogram import Client, filters, enums, errors
+from pyrogram.types import InputMediaPhoto, InputMediaVideo, InputMediaDocument, InputMediaAudio
 
 from core.database import (
     get_all_active_users, get_destinations_for_source,
@@ -12,6 +14,9 @@ from core.database import (
 )
 
 logger = logging.getLogger(__name__)
+
+# How long to wait for more messages in a media group (seconds)
+MEDIA_GROUP_WAIT = 1.0
 
 
 class SessionManager:
@@ -111,15 +116,89 @@ class SessionManager:
             session_string=session_string, in_memory=True
         )
 
+        # Buffer for collecting media group messages (albums)
+        media_groups: dict[str, list] = {}
+        media_group_tasks: dict[str, asyncio.Task] = {}
+
+        async def _flush_media_group(group_id: str, chat_id: int):
+            """Wait, then send the collected album as a single media group."""
+            await asyncio.sleep(MEDIA_GROUP_WAIT)
+
+            messages = media_groups.pop(group_id, [])
+            media_group_tasks.pop(group_id, None)
+
+            if not messages:
+                return
+
+            # Sort by message_id to keep original order
+            messages.sort(key=lambda m: m.id)
+
+            dests = await get_destinations_for_source(user_id, chat_id)
+            for d in dests:
+                try:
+                    # Build InputMedia list from the collected messages
+                    media_list = []
+                    for msg in messages:
+                        caption = msg.caption or ""
+                        if msg.photo:
+                            media_list.append(InputMediaPhoto(
+                                msg.photo.file_id, caption=caption
+                            ))
+                        elif msg.video:
+                            media_list.append(InputMediaVideo(
+                                msg.video.file_id, caption=caption
+                            ))
+                        elif msg.document:
+                            media_list.append(InputMediaDocument(
+                                msg.document.file_id, caption=caption
+                            ))
+                        elif msg.audio:
+                            media_list.append(InputMediaAudio(
+                                msg.audio.file_id, caption=caption
+                            ))
+
+                    if media_list:
+                        await client.send_media_group(d['dest_chat_id'], media_list)
+                        await increment_forwarded(user_id, len(media_list))
+                    else:
+                        # Fallback: copy individually if media type is unknown
+                        for msg in messages:
+                            await msg.copy(d['dest_chat_id'])
+                            await increment_forwarded(user_id)
+
+                except errors.FloodWait as e:
+                    await asyncio.sleep(e.value + 1)
+                except Exception as e:
+                    logger.error(f"[User {user_id}] Album forward fail -> {d['dest_chat_id']}: {e}")
+
         @client.on_message(filters.group | filters.channel)
         async def _forwarder(c, message):
+            # ── Media Group (Album) handling ──
+            if message.media_group_id:
+                group_id = message.media_group_id
+
+                if group_id not in media_groups:
+                    media_groups[group_id] = []
+
+                media_groups[group_id].append(message)
+
+                # Cancel previous flush timer, start new one
+                old_task = media_group_tasks.get(group_id)
+                if old_task:
+                    old_task.cancel()
+
+                media_group_tasks[group_id] = asyncio.create_task(
+                    _flush_media_group(group_id, message.chat.id)
+                )
+                return
+
+            # ── Single message (text, photo, video, etc.) ──
             dests = await get_destinations_for_source(user_id, message.chat.id)
             for d in dests:
                 try:
                     await message.copy(d['dest_chat_id'])
                     await increment_forwarded(user_id)
                 except errors.FloodWait as e:
-                    import asyncio
                     await asyncio.sleep(e.value)
                     try:
                         await message.copy(d['dest_chat_id'])

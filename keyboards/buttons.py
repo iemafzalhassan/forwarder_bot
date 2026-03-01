@@ -80,6 +80,13 @@ def confirm_delete_kb(rule_id: int) -> InlineKeyboardMarkup:
     ])
 
 
+def confirm_migration_kb(rule_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("⟳  Yes, Migrate Again", callback_data=f"startmig_{rule_id}")],
+        [InlineKeyboardButton("✕  No, Cancel", callback_data=f"viewrule_{rule_id}")]
+    ])
+
+
 def rules_list_kb(rules: list) -> InlineKeyboardMarkup:
     buttons = []
     for r in rules:

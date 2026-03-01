@@ -4,7 +4,8 @@ from pyrogram.types import CallbackQuery
 
 from keyboards.buttons import (
     main_menu_kb, back_to_main_kb, groups_keyboard, cancel_kb,
-    rules_list_kb, rule_detail_kb, confirm_delete_kb, migrate_menu_kb
+    rules_list_kb, rule_detail_kb, confirm_delete_kb, migrate_menu_kb,
+    confirm_migration_kb
 )
 from core.database import (
     get_user, add_rule, get_user_rules, get_active_rules,
@@ -380,6 +381,36 @@ def register(bot: Client, session_mgr):
         uid = cb.from_user.id
         rule_id = int(cb.data.split("_")[1])
 
+        rule = await get_rule_by_id(rule_id, uid)
+        if not rule:
+            await cb.answer("Rule not found.", show_alert=True)
+            return
+
+        if rule['messages_copied'] > 0:
+            await cb.answer()
+            await safe_edit(
+                cb.message,
+                "**⚠️ Warning: Already Migrated**\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"You have already migrated **{rule['messages_copied']}**\n"
+                "messages for this rule.\n\n"
+                "If you migrate again, it will copy ALL\n"
+                "old messages again and create\n"
+                "**duplicates** in the destination group.\n\n"
+                "Are you sure you want to proceed?",
+                reply_markup=confirm_migration_kb(rule_id)
+            )
+            return
+
+        await _trigger_migration(client, cb, uid, rule_id)
+
+    @bot.on_callback_query(filters.regex(r"^startmig_\d+$"))
+    async def cb_startmig(client: Client, cb: CallbackQuery):
+        uid = cb.from_user.id
+        rule_id = int(cb.data.split("_")[1])
+        await _trigger_migration(client, cb, uid, rule_id)
+
+    async def _trigger_migration(client: Client, cb: CallbackQuery, uid: int, rule_id: int):
         user_client = session_mgr.active_clients.get(uid)
         if not user_client:
             await cb.answer("Session not active. Connect again.", show_alert=True)

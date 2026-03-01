@@ -10,7 +10,8 @@ from pyrogram.types import InputMediaPhoto, InputMediaVideo, InputMediaDocument,
 
 from core.database import (
     get_all_active_users, get_destinations_for_source,
-    increment_forwarded, increment_rule_count, get_active_rules
+    increment_forwarded, increment_rule_count, get_active_rules,
+    is_message_copied, mark_message_copied
 )
 
 logger = logging.getLogger(__name__)
@@ -135,6 +136,12 @@ class SessionManager:
 
             dests = await get_destinations_for_source(user_id, chat_id)
             for d in dests:
+                rule_id = d['rule_id']
+                
+                # If first message of album already copied, skip entire album
+                if messages and await is_message_copied(rule_id, messages[0].id):
+                    continue
+                
                 try:
                     # Build InputMedia list from the collected messages
                     media_list = []
@@ -160,11 +167,14 @@ class SessionManager:
                     if media_list:
                         await client.send_media_group(d['dest_chat_id'], media_list)
                         await increment_forwarded(user_id, len(media_list))
+                        for msg in messages:
+                            await mark_message_copied(rule_id, msg.id)
                     else:
                         # Fallback: copy individually if media type is unknown
                         for msg in messages:
                             await msg.copy(d['dest_chat_id'])
                             await increment_forwarded(user_id)
+                            await mark_message_copied(rule_id, msg.id)
 
                 except errors.FloodWait as e:
                     await asyncio.sleep(e.value + 1)
@@ -195,14 +205,21 @@ class SessionManager:
             # ── Single message (text, photo, video, etc.) ──
             dests = await get_destinations_for_source(user_id, message.chat.id)
             for d in dests:
+                rule_id = d['rule_id']
+                
+                if await is_message_copied(rule_id, message.id):
+                    continue
+                
                 try:
                     await message.copy(d['dest_chat_id'])
                     await increment_forwarded(user_id)
+                    await mark_message_copied(rule_id, message.id)
                 except errors.FloodWait as e:
                     await asyncio.sleep(e.value)
                     try:
                         await message.copy(d['dest_chat_id'])
                         await increment_forwarded(user_id)
+                        await mark_message_copied(rule_id, message.id)
                     except Exception:
                         pass
                 except Exception as e:

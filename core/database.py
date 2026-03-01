@@ -51,6 +51,14 @@ async def init_db():
             )
         ''')
 
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS copied_messages (
+                rule_id INTEGER,
+                source_message_id INTEGER,
+                PRIMARY KEY (rule_id, source_message_id)
+            )
+        ''')
+
         # ── Auto-migration: add new columns to existing tables ──
         migrations = [
             ("users", "messages_forwarded", "INTEGER DEFAULT 0"),
@@ -164,7 +172,7 @@ async def get_destinations_for_source(user_id: int, source_chat_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT dest_chat_id FROM forwarding_rules WHERE user_id = ? AND source_chat_id = ? AND is_active = 1",
+            "SELECT id as rule_id, dest_chat_id FROM forwarding_rules WHERE user_id = ? AND source_chat_id = ? AND is_active = 1",
             (user_id, source_chat_id)
         ) as cur:
             return await cur.fetchall()
@@ -247,6 +255,25 @@ async def get_active_migration(user_id: int):
             (user_id,)
         ) as cur:
             return await cur.fetchone()
+
+
+async def is_message_copied(rule_id: int, source_message_id: int) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT 1 FROM copied_messages WHERE rule_id = ? AND source_message_id = ?",
+            (rule_id, source_message_id)
+        ) as cur:
+            row = await cur.fetchone()
+            return row is not None
+
+
+async def mark_message_copied(rule_id: int, source_message_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO copied_messages (rule_id, source_message_id) VALUES (?, ?)",
+            (rule_id, source_message_id)
+        )
+        await db.commit()
 
 
 # ===== Stats =====

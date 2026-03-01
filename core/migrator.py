@@ -8,7 +8,8 @@ from pyrogram import Client, errors
 
 from core.database import (
     create_migration, update_migration_progress,
-    finish_migration, get_rule_by_id, increment_rule_count, increment_forwarded
+    finish_migration, get_rule_by_id, increment_rule_count, increment_forwarded,
+    mark_message_copied
 )
 
 logger = logging.getLogger(__name__)
@@ -82,25 +83,23 @@ async def _run_migration(bot: Client, user_id: int, rule_id: int,
         batch_size = 100
         update_interval = 50  # Notify every 50 messages
 
-        # Find where we left off to prevent duplicates
+        # Get all already copied message IDs for this rule to prevent duplicates
         import aiosqlite
         from core.database import DB_PATH
-        last_mig_id = 0
+        copied_ids = set()
         async with aiosqlite.connect(DB_PATH) as db:
             async with db.execute(
-                "SELECT MAX(last_message_id) FROM migrations WHERE rule_id = ? AND status = 'completed'",
+                "SELECT source_message_id FROM copied_messages WHERE rule_id = ?",
                 (rule_id,)
             ) as cur:
-                row = await cur.fetchone()
-                if row and row[0]:
-                    last_mig_id = row[0]
+                async for row in cur:
+                    copied_ids.add(row[0])
 
-        # Get messages in reverse (oldest first) up to the last migrated message
+        # Get messages in reverse (oldest first) skipping already copied ones
         all_ids = []
         async for msg in user_client.get_chat_history(source_id):
-            if msg.id <= last_mig_id:
-                break  # Skipped already migrated messages!
-            all_ids.append(msg.id)
+            if msg.id not in copied_ids:
+                all_ids.append(msg.id)
 
         total = len(all_ids)
         if total == 0:
@@ -139,6 +138,7 @@ async def _run_migration(bot: Client, user_id: int, rule_id: int,
                 )
                 copied += 1
                 last_msg_id = msg_id
+                await mark_message_copied(rule_id, msg_id)
 
                 # Rate limit: 1 message per 0.5 seconds
                 await asyncio.sleep(0.5)

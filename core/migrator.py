@@ -82,17 +82,45 @@ async def _run_migration(bot: Client, user_id: int, rule_id: int,
         batch_size = 100
         update_interval = 50  # Notify every 50 messages
 
-        # Get messages in reverse (oldest first) by collecting in batches
+        # Find where we left off to prevent duplicates
+        import aiosqlite
+        from core.database import DB_PATH
+        last_mig_id = 0
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute(
+                "SELECT MAX(last_message_id) FROM migrations WHERE rule_id = ? AND status = 'completed'",
+                (rule_id,)
+            ) as cur:
+                row = await cur.fetchone()
+                if row and row[0]:
+                    last_mig_id = row[0]
+
+        # Get messages in reverse (oldest first) up to the last migrated message
         all_ids = []
         async for msg in user_client.get_chat_history(source_id):
+            if msg.id <= last_mig_id:
+                break  # Skipped already migrated messages!
             all_ids.append(msg.id)
 
         total = len(all_ids)
+        if total == 0:
+            await finish_migration(migration_id, 'completed')
+            active_migrations.pop(user_id, None)
+            await bot.send_message(
+                notify_chat_id,
+                "**Already Synced**\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                "✅ No new messages found to copy.\n"
+                "Duplicates have been prevented.\n"
+                "━━━━━━━━━━━━━━━━━━━━"
+            )
+            return
+
         await update_migration_progress(migration_id, 0, 0)
 
         await bot.send_message(
             notify_chat_id,
-            f"**{total}** messages found.\n"
+            f"**{total}** new messages found.\n"
             f"Estimated time: ~{total * 0.6 / 60:.1f} min"
         )
 
